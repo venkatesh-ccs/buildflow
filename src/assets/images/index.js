@@ -96,7 +96,18 @@ import userRequestApprovalPending from "../../assets/images/user-request-approva
 import PRODUCT_LOGO from "../../assets/images/PRODUCT_LOGO.svg";
 import notification_icon from "../../assets/images/notification_icon.svg"
 import icon_dashboard from "../../assets/images/icon_dashboard.svg"
+import calendar from "../../assets/images/calendor.svg"
+import filter from "../images/icon-filter.svg"
+import constructions_img from "../images/constructions_img.svg"
 import profile from "../../assets/images/profile.svg"
+import email from "../images/Email.png"
+import logout from "../images/Logout.png"
+import phone from "../images/Phone.png"
+import profile_pic from "../images/Profile-pic.png"
+import comment from "../images/Comment.png"
+import fileAttach from "../images/FileAttach.png"
+import date from "../images/Time.png"
+
 export {
   Home,
   inactiveHome,
@@ -191,5 +202,15 @@ export {
   PRODUCT_LOGO,
   notification_icon,
   icon_dashboard,
-  profile
+  profile,
+  calendar,
+  filter,
+  constructions_img,
+  email,
+  logout,
+  phone,
+  profile_pic,
+  comment,
+  fileAttach,
+  date,
 };

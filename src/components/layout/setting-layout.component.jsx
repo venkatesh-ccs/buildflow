@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { Fragment } from "react";
 import SettingNav from "./settingnav/settingnav.component";
+import ChatApp from "../../pages/Chat Page/Chat/ChatApp";
 
 const SettingLayout = () => {
   

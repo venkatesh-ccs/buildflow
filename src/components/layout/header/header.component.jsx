@@ -21,7 +21,8 @@ import {
   appLogo,
   PRODUCT_LOGO,
   workspaceSwitch,
-  notification_icon
+  notification_icon,
+  searchIcon
 } from "../../../assets/images";
 import { useBoard } from "../../../hooks/useKanban";
 import { useTranslation } from "react-i18next";
@@ -328,8 +329,9 @@ const Header = () => {
             </div>
           </div>
         </div>
-        <div className="">
-          <input class="header-search-input" placeholder="Search....." autocomplete="off" />
+        <div className="position-relative">
+          <img src={searchIcon} alt="" className="search-icon" />
+          <input class="header-search-input" placeholder="Search....." autocomplete="off"></input>
         </div>
         <div className="header-content__options">
           <div className="notification" ref={notifyItemRef} id="show_notify">

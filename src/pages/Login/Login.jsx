@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { showToast } from "../../store/slice/toast";
 import {
   setAuthToken,
   getAuthToken,
   setExpiresOn,
-  setAuthType,
   getAuthType,
   getDeepLinkURL,
   setDeepLinkURL,
@@ -13,17 +12,20 @@ import {
 import { useDispatch } from "react-redux";
 import useAuth from "../../hooks/useAuth";
 import { useTranslation } from "react-i18next";
+import { PRODUCT_LOGO } from "../../assets/images";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
+import '../../styles/components/css/login.css';
 
-export default function Login() {
+export default function Login({ onLoginSuccess }) {
   const [{ data }, { getAuth, setAuth, getUserInfo }] = useAuth();
-  const [isTokenSuccess, setIsTokenSuccess] = useState(false);
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const isAuthenticatedToken = !!getAuthToken();
+  const dispatch = useDispatch();
+  
+  // Form state
   const [activeForm, setActiveForm] = useState("login");
   const [inProgress, setInProgress] = useState(false);
-  const dispatch = useDispatch();
-
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -32,22 +34,13 @@ export default function Login() {
     username: "",
     password: "",
   });
-
   const [errorMsg, setErrorMsg] = useState({});
+  
   const inputRef = useRef(null);
-
-  const handlePhoneNumber = (e) => {
-    const phone = e.target.value;
-    if (!/^[0-9]*$/.test(phone)) {
-      setErrorMsg((prev) => ({ ...prev, phone: true }));
-    } else {
-      setFormData((prev) => ({ ...prev, phone }));
-      setErrorMsg((prev) => ({ ...prev, phone: false }));
-    }
-  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    
     if (!formData.username || !formData.password) {
       setErrorMsg((prev) => ({
         ...prev,
@@ -56,22 +49,95 @@ export default function Login() {
       }));
       return;
     }
+    
     setInProgress(true);
     try {
       const response = await getAuth({
         username: formData.username,
         password: formData.password,
       });
-
-      if (response.payload?.token) {
+  
+      if (response?.payload?.token) {
+        // Store authentication token
         setAuthToken(response.payload.token);
+        localStorage.setItem("accessToken", response.payload.token);
         setAuth(response.payload.token);
-        await getUserInfo(); // Call immediately
+  
+        // Fetch user details
+        const userInfoResponse = await getUserInfo();
+        
+        console.log("User info response:", userInfoResponse); // Debug log
+        
+        // Check if user details exist in the response
+        if (userInfoResponse?.payload?.details) {
+          const userDetails = userInfoResponse.payload.details;
+          
+          // For debugging, let's log what we received
+          console.log("User details:", userDetails);
+          
+          // Set default role if not present
+          // Assuming role hierarchy: SuperAdmin > Admin > User
+          const userData = {
+            ...userDetails,
+            roleName: userDetails.roleName || userDetails.role_name || "SuperAdmin",
+            roleId: userDetails.roleId || userDetails.role_id || "1",
+          };
+          
+          console.log("Processed user data:", userData); // Debug log
+  
+          // Store user data and role information
+          localStorage.setItem("userData", JSON.stringify(userData));
+          localStorage.setItem("userRole", userData.roleName);
+          localStorage.setItem("userRoleId", userData.roleId);
+  
+          // Call onLoginSuccess callback
+          if (onLoginSuccess) {
+            onLoginSuccess(userData);
+          }
+        } else if (userInfoResponse?.payload) {
+          // If details are not in the expected structure, try to use the payload directly
+          const userData = {
+            ...userInfoResponse.payload,
+            roleName: userInfoResponse.payload.roleName || userInfoResponse.payload.role_name || "SuperAdmin",
+            roleId: userInfoResponse.payload.roleId || userInfoResponse.payload.role_id || "1",
+          };
+          
+          console.log("Using payload as user data:", userData); // Debug log
+          
+          localStorage.setItem("userData", JSON.stringify(userData));
+          localStorage.setItem("userRole", userData.roleName);
+          localStorage.setItem("userRoleId", userData.roleId);
+          
+          if (onLoginSuccess) {
+            onLoginSuccess(userData);
+          }
+        } else {
+          // If we have a token but no user details, create a default user
+          // This is a fallback to prevent login failures
+          console.log("No user details found, using default values"); // Debug log
+          
+          const defaultUserData = {
+            username: formData.username,
+            roleName: "SuperAdmin",
+            roleId: "1",
+          };
+          
+          localStorage.setItem("userData", JSON.stringify(defaultUserData));
+          localStorage.setItem("userRole", defaultUserData.roleName);
+          localStorage.setItem("userRoleId", defaultUserData.roleId);
+          
+          if (onLoginSuccess) {
+            onLoginSuccess(defaultUserData);
+          }
+          
+          // Show a warning that we're using default values
+          dispatch(showToast({ 
+            message: "Logged in with default permissions. Some features may be limited.", 
+            variant: "warning" 
+          }));
+        }
       } else {
-        setIsTokenSuccess(false);
-        dispatch(
-          showToast({ message: t("login.error.invalid"), variant: "danger" })
-        );
+        throw new Error(response?.message || t("login.error.invalid"));
       }
     } catch (error) {
       console.error("Login Error:", error);
@@ -80,66 +146,75 @@ export default function Login() {
       setInProgress(false);
     }
   };
-
-
+  
+  // Check if already authenticated on component mount
   useEffect(() => {
-    if (isTokenSuccess) {
-      getUserInfo().catch((err) =>
-        console.error("Error fetching user info:", err)
-      );
-      setIsTokenSuccess(false);
-    }
-  }, [isTokenSuccess]);
-
-  useEffect(() => {
-    if (isAuthenticatedToken && data?.details) {
-      const storageData = localStorage.getItem("accessToken");
-      setAuth(storageData);
-      const redirectURL = getDeepLinkURL();
-      if (redirectURL) {
-        setDeepLinkURL("");
-        navigate(redirectURL);
-      } else if (data.details.is_active) {
-        navigate("/home");
-      } else {
-        handleUnauthorizedUser();
+    const checkExistingAuth = async () => {
+      const authToken = getAuthToken() || localStorage.getItem("accessToken");
+      
+      if (authToken) {
+        setAuth(authToken);
+        try {
+          const userInfo = await getUserInfo();
+          
+          if (userInfo?.payload?.details) {
+            const userDetails = userInfo.payload.details;
+            
+            // Create user data object with role information
+            const userData = {
+              ...userDetails,
+              roleName: userDetails.roleName || userDetails.role_name || "SuperAdmin",
+              roleId: userDetails.roleId || userDetails.role_id || "1"
+            };
+            
+            // Store user data and role information in localStorage
+            localStorage.setItem("userData", JSON.stringify(userData));
+            localStorage.setItem("userRole", userData.roleName);
+            localStorage.setItem("userRoleId", userData.roleId);
+            
+            // Call onLoginSuccess with user data
+            if (onLoginSuccess) {
+              onLoginSuccess(userData);
+            }
+          } else if (userInfo?.payload) {
+            // If details are not in the expected structure, try to use the payload directly
+            const userData = {
+              ...userInfo.payload,
+              roleName: userInfo.payload.roleName || userInfo.payload.role_name || "SuperAdmin",
+              roleId: userInfo.payload.roleId || userInfo.payload.role_id || "1"
+            };
+            
+            localStorage.setItem("userData", JSON.stringify(userData));
+            localStorage.setItem("userRole", userData.roleName);
+            localStorage.setItem("userRoleId", userData.roleId);
+            
+            if (onLoginSuccess) {
+              onLoginSuccess(userData);
+            }
+          } else {
+            // Token exists but no user data - clear and force re-login
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("userRole");
+            localStorage.removeItem("userRoleId");
+            localStorage.removeItem("userData");
+            setAuthToken("");
+          }
+        } catch (error) {
+          console.error("Error fetching user info:", error);
+          // Clear invalid token
+          localStorage.removeItem("accessToken");
+          localStorage.removeItem("userRole");
+          localStorage.removeItem("userRoleId");
+          localStorage.removeItem("userData");
+          setAuthToken("");
+        }
       }
-    }
-  }, [isAuthenticatedToken, data]);
+    };
+    
+    checkExistingAuth();
+  }, []);
 
-  const handleUnauthorizedUser = () => {
-    dispatch(
-      showToast({ message: t("login.inactive_user"), variant: "danger" })
-    );
-    setAuthToken("");
-    setExpiresOn("");
-  };
-
-  const handleSubmitForm = (e) => {
-    e.preventDefault();
-    // Perform form validation and API call for signup
-  };
-
-  useEffect(() => {
-    if (activeForm === "signup" && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [activeForm]);
-
-  const getUserNameData = (val) => {
-    setFormData((prev) => ({ ...prev, username: val }));
-    if (val.length > 0) {
-      setErrorMsg((prev) => ({ ...prev, username: false }));
-    }
-  };
-  const getUserPasswordData = (val) => {
-    setFormData((prev) => ({ ...prev, password: val }));
-    if (val.length > 0) {
-      setErrorMsg((prev) => ({ ...prev, password: false }));
-    }
-  };
-
-  // Handle "Enter" key press to trigger login
+  // Handle Enter key press
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       handleLogin(e);
@@ -147,192 +222,98 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-form">
-        <div className="login-form-container">
-          {activeForm === "login" && (
-            <div className="login-form-container-button">
-              <div className="user-flex">
-                <div className="user-row">
-                  <label>{t("login.label.userName")} </label>
-                  <input
-                    type="email"
-                    value={formData.username}
-                    onChange={(e) => getUserNameData(e.target.value)}
-                    onKeyDown={handleKeyDown} // Press "Enter" to trigger login
-                    placeholder={t("login.label.userName")}
+    <main className="main-login">
+      <div className="login-page">
+        <div className="login-form">
+          <div className="login-form-container">
+            {activeForm === "login" && (
+              <div className="login-form-container-button">
+                <div className="user-flex">
+                  <img
+                    className="mb-5"
+                    src={PRODUCT_LOGO}
+                    alt="Agent Board Icon"
                   />
-                </div>
-                <div className="user-row">
-                  {errorMsg.username && (
-                    <p className="errorMsg">{t("login.error.email")}</p>
-                  )}
-                </div>
-                <div className="user-row">
-                  <label>{t("login.label.password")}</label>
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => getUserPasswordData(e.target.value)}
-                    onKeyDown={handleKeyDown} // Press "Enter" to trigger login
-                    placeholder={t("login.label.password")}
-                  />
-                </div>
-                <div className="user-row">
-                  {errorMsg.password && (
-                    <p className="errorMsg">
-                      {t("please enter valid password.")}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <button
-                className="login-form-container-button-common"
-                onClick={(e)=>handleLogin(e)}
-                disabled={inProgress}
-              >
-                {inProgress
-                  ? t("login.inprogress")
-                  : t("login.with_eurolandID")}
-              </button>
-              {/* <p className="login-form-container-signupbtn">
-                {t("login.no_account")}{" "}
-                <span onClick={() => setActiveForm("signup")}>
-                  {t("login.signup")}
-                </span>{" "}
-                ?
-              </p> */}
-            </div>
-          )}
-
-          {/* {activeForm === "signup" && (
-            <form onSubmit={handleSubmitForm}>
-              <div className="login-form-signup">
-                <div className="form-row">
-                  <div className="form-col">
-                    <label className="input-label">
-                      {t("login.label.firstname")} <sup>*</sup>{" "}
-                    </label>
+                  <div className="user-row">
+                    <label>{t("login.label.userName")} </label>
                     <input
-                      ref={inputRef}
-                      className="input-type"
-                      value={formData.firstName}
+                      type="email"
+                      value={formData.username}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          firstName: e.target?.value,
-                        })
+                        setFormData((prev) => ({
+                          ...prev,
+                          username: e.target.value,
+                        }))
                       }
-                      placeholder={t("login.label.firstname")}
-                      maxLength={"50"}
-                      autofocus
+                      onKeyDown={handleKeyDown}
                     />
-                    <label className="error-msg">
-                      {errorMsg.firstName === true &&
-                        t("login.error.firstname")}
-                    </label>
+                    {errorMsg.username && (
+                      <p className="errorMsg">{t("login.error.email")}</p>
+                    )}
                   </div>
-                  <div className="form-col">
-                    <label className="input-label">
-                      {" "}
-                      {t("login.label.lastname")}{" "}
-                    </label>
+                  <div className="user-row mb-0" style={{ position: "relative" }}>
+                    <label>{t("login.label.password")}</label>
                     <input
-                      className="input-type"
-                      value={formData.lastName}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          lastName: e.target?.value,
-                        })
-                      }
-                      maxLength={"50"}
-                      placeholder={t("login.label.lastname")}
-                    />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-col">
-                    <label className="input-label">
-                      {" "}
-                      {t("login.label.email")} <sup>*</sup>{" "}
-                    </label>
-                    <input
-                      className="input-type"
-                      value={formData.email}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          email: e.target?.value,
-                        })
-                      }
-                      placeholder={t("login.label.email")}
-                    />
-                    <label className="error-msg">
-                      {errorMsg.email === true &&
-                        formData.email === "" &&
-                        t("login.error.email")}
-                      {errorMsg.email === true &&
-                        formData.email !== "" &&
-                        errorMsg.invalidEmail === true &&
-                        t("login.error.invalidEmail")}
-                    </label>
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-col">
-                    <label className="input-label">
-                      {" "}
-                      {t("login.label.jobTitle")} <sup>*</sup>{" "}
-                    </label>
-                    <input
-                      className="input-type"
-                      value={formData.email}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          email: e.target?.value,
-                        })
-                      }
-                      placeholder={t("login.label.jobTitle_placeholder")}
-                    />
-                    <label className="error-msg">
-                      {errorMsg.email === true &&
-                        formData.email === "" &&
-                        t("login.error.jobTitle")}
-                    </label>
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-col">
-                    <label className="input-label">
-                      {t("login.label.password")} <sup>*</sup>{" "}
-                    </label>
-                    <input
-                      className="input-type"
+                      type={showPassword ? "text" : "password"}
                       value={formData.password}
-                      onChange={(e) => getUserPasswordData(e.target.value)}
-                      placeholder={t("login.label.password")}
-                      maxLength={50}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          password: e.target.value,
+                        }))
+                      }
+                      onKeyDown={handleKeyDown}
+                      style={{ paddingRight: "40px" }}
                     />
+                    <span
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: "absolute",
+                        right: "10px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {showPassword ? <FaEye /> : <FaEyeSlash />}
+                    </span>
+                    {errorMsg.password && (
+                      <p className="errorMsg">
+                        {t("please enter valid password.")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="forgot-password">
+                    <Link className="text-decoration-none forgot">
+                      Forgot Password?
+                    </Link>
                   </div>
                 </div>
-                <div className="form-row">
-                  <div className="form-col">
-                    <button
-                      className="form-button"
-                      disabled={inProgress}
-                      onClick={handleSubmitForm}
-                    >
-                      {inProgress ? t("login.inprogress") : t("signup.submit")}
-                    </button>
-                  </div>
+                <button
+                  className="login-form-container-button-common btn-login my-4"
+                  onClick={(e) => handleLogin(e)}
+                  disabled={inProgress}
+                >
+                  {inProgress
+                    ? t("login.inprogress")
+                    : t("login.with_eurolandID")}
+                </button>
+                <div className="google mt-3">
+                  <Link className="text-decoration-none">                    
+                    <svg className="me-2" width="25" height="24" viewBox="0 0 25 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.3055 10.0415H21.5V10H12.5V14H18.1515C17.327 16.3285 15.1115 18 12.5 18C9.1865 18 6.5 15.3135 6.5 12C6.5 8.6865 9.1865 6 12.5 6C14.0295 6 15.421 6.577 16.4805 7.5195L19.309 4.691C17.523 3.0265 15.134 2 12.5 2C6.9775 2 2.5 6.4775 2.5 12C2.5 17.5225 6.9775 22 12.5 22C18.0225 22 22.5 17.5225 22.5 12C22.5 11.3295 22.431 10.675 22.3055 10.0415Z" fill="#FFC107"/>
+                    <path d="M3.65295 7.3455L6.93845 9.755C7.82745 7.554 9.98045 6 12.5 6C14.0295 6 15.421 6.577 16.4805 7.5195L19.309 4.691C17.523 3.0265 15.134 2 12.5 2C8.65895 2 5.32795 4.1685 3.65295 7.3455Z" fill="#FF3D00"/>
+                    <path d="M12.5 22C15.083 22 17.43 21.0115 19.2045 19.404L16.1095 16.785C15.072 17.5745 13.8038 18.0014 12.5 18C9.89903 18 7.69053 16.3415 6.85853 14.027L3.59753 16.5395C5.25253 19.778 8.61353 22 12.5 22Z" fill="#4CAF50"/>
+                    <path d="M22.3055 10.0415H21.5V10H12.5V14H18.1515C17.7571 15.1082 17.0467 16.0766 16.108 16.7855L16.1095 16.7845L19.2045 19.4035C18.9855 19.6025 22.5 17 22.5 12C22.5 11.3295 22.431 10.675 22.3055 10.0415Z" fill="#1976D2"/>
+                    </svg>
+                    Login with Google Account
+                  </Link>
                 </div>
               </div>
-            </form> 
-          )} */}
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
