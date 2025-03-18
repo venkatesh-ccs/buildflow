@@ -2,7 +2,7 @@ function KanbanBoard () {
 
     return (
         <>
-        <h1>Kanban Board</h1>
+        <h1>Kanban Board engonrrrt</h1>
         </>
     )
 }
